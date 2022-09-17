@@ -39,14 +39,14 @@ class Detector:
         layers_names = [layers_names[i - 1] for i in self.model.getUnconnectedOutLayers()]
         return layers_names
 
-    def _draw_bounding_box(self, img, class_id, confidence, x, y, x_plus_w, y_plus_h):
+    def _draw_bounding_box(self, img, x, y, x_plus_w, y_plus_h):
 
         point1, point2 = ((x + x_plus_w) // 2, ((y + y_plus_h) // 2))
 
         result = cv2.pointPolygonTest(self.pts, (point1, point2), measureDist=False)
-        cv2.polylines(image, [self.pts], True, (255, 0, 0), 2)
+        cv2.polylines(img, [self.pts], True, (255, 0, 0), 2)
         if result == 1.0:
-            cv2.circle(image, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
+            cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
 
     def inference(self, inputs: np.ndarray) -> np.array:
         if not isinstance(inputs, np.ndarray) and len(inputs) == 1:
@@ -91,8 +91,7 @@ class Detector:
                 h = box[3]
                 detections.append((box, confidences[i], self.labels[class_ids[i]]))
 
-                self._draw_bounding_box(image, class_ids[i], confidences[i], round(x), round(y), round(x + w),
-                                        round(y + h))
+                self._draw_bounding_box(inputs, round(x), round(y), round(x + w), round(y + h))
 
         return detections
 
