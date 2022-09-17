@@ -120,7 +120,7 @@ if __name__ == '__main__':
     image = cv2.imread("vant-externo.jpeg")
 
     tes = detector.inference(image)
-
-    cv2.imshow("object detection", image)
+    cv2.namedWindow("Street Parking", cv2.WINDOW_AUTOSIZE)
+    cv2.imshow("Street Parking", image)
     cv2.waitKey()
     cv2.destroyAllWindows()
