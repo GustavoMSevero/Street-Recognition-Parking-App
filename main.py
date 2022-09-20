@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pprint import pprint
 
 import cv2
 import gdown
@@ -39,18 +40,21 @@ class Detector:
         layers_names = [layers_names[i - 1] for i in self.model.getUnconnectedOutLayers()]
         return layers_names
 
-    def _draw_bounding_box(self, img, x, y, x_plus_w, y_plus_h):
+    def _draw_bounding_box(self, img, x, y, x_plus_w, y_plus_h, number_vehicles):
 
         point1, point2 = ((x + x_plus_w) // 2, ((y + y_plus_h) // 2))
 
-        result = cv2.pointPolygonTest(self.pts, (point1, point2), measureDist=False)
         cv2.polylines(img, [self.pts], True, (255, 0, 0), 2)
-        if result == 1.0:
-            cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
+
+        cv2.putText(image, f"{str(number_vehicles)} veiculos estacionados ", (1287, 950), cv2.FONT_HERSHEY_SIMPLEX,
+                    1, (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
 
     def inference(self, inputs: np.ndarray) -> np.array:
         if not isinstance(inputs, np.ndarray) and len(inputs) == 1:
             inputs = inputs.pop()
+
+        labels = self._load_labels(self.labels)
 
         blob = cv2.dnn.blobFromImage(inputs, 1 / 255.0, (416, 416),
                                      swapRB=True, crop=False)
@@ -82,6 +86,10 @@ class Detector:
         indices = cv2.dnn.NMSBoxes(boxes, confidences, self.conf_threshold,
                                    self.nms_threshold)
 
+        num_cars = 0
+
+        list_detections = list()
+
         if len(indices) > 0:
             for i in indices:
                 box = boxes[i]
@@ -89,11 +97,50 @@ class Detector:
                 y = box[1]
                 w = box[2]
                 h = box[3]
-                detections.append((box, confidences[i], self.labels[class_ids[i]]))
+                detections.append((box, confidences[i], labels[class_ids[i]]))
 
-                self._draw_bounding_box(inputs, round(x), round(y), round(x + w), round(y + h))
+                list_vehicle = ["car", "motorcycle", "bus", "truck"]
 
-        return detections
+                if labels[class_ids[i]] in list_vehicle:
+                    num_cars = 1
+
+                list_detections.append(
+                    dict(
+                        inputs=inputs,
+                        x=round(x),
+                        y=round(y),
+                        x_w=round(x + w),
+                        y_h=round(y + h),
+                        number_vehicles=num_cars
+                    )
+                )
+
+            test = list()
+            total_carros = 0
+            for l in list_detections:
+
+                point1, point2 = ((l["x"] + l["x_w"]) // 2, ((l["y"] + l["y_h"]) // 2))
+
+                result = cv2.pointPolygonTest(self.pts, (point1, point2), measureDist=False)
+
+                if result == 1.0:
+                    total_carros = total_carros + 1
+                    test.append(
+                        dict(
+                            inputs=l["inputs"],
+                            x=l["x"],
+                            y=l["y"],
+                            x_w=l["x_w"],
+                            y_h=l["y_h"],
+                            result=result
+                        )
+                    )
+
+            for l in test:
+                self._draw_bounding_box(l["inputs"], l["x"], l["y"], l["x_w"], l["y_h"], total_carros)
+
+        pprint(f"Há {total_carros} estacionados na área selecionada")
+        return detections, total_carros
 
 
 if __name__ == '__main__':
@@ -119,7 +166,18 @@ if __name__ == '__main__':
     detector = Detector(polygon=region["region"])
     image = cv2.imread("vant-externo.jpeg")
 
-    tes = detector.inference(image)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    org = (351, 761)
+    fontScale = 1
+
+    color = (255, 0, 0)
+    thickness = 2
+
+    detector = Detector(polygon=region["region"])
+    image = cv2.imread("vant-externo.jpeg")
+
+    tes, num_cars = detector.inference(image)
+
     cv2.namedWindow("Street Parking", cv2.WINDOW_AUTOSIZE)
     cv2.imshow("Street Parking", image)
     cv2.waitKey()
