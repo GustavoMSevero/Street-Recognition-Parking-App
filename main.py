@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from pprint import pprint
+from typing import Tuple
 
 import cv2
 import gdown
@@ -10,7 +11,7 @@ import numpy as np
 
 class Detector:
 
-    def __init__(self, polygon) -> None:
+    def __init__(self, polygon: np.array, text: Tuple[int], text_2: Tuple[int], num_max_cars: int) -> None:
         super().__init__()
 
         weights = "yolov4.weights"
@@ -23,6 +24,9 @@ class Detector:
         self.conf_threshold = 0.5
         self.nms_threshold = 0.4
         self.pts = np.array(polygon, np.int32)
+        self.text = text
+        self.text_2 = text_2
+        self.num_max_cars = num_max_cars
 
     @staticmethod
     def _load_labels(labels_path: str):
@@ -40,14 +44,49 @@ class Detector:
         layers_names = [layers_names[i - 1] for i in self.model.getUnconnectedOutLayers()]
         return layers_names
 
+    def _bounding_box(self, points):
+        x_coordinates, y_coordinates = zip(*points)
+
+        return [min(x_coordinates), min(y_coordinates), max(x_coordinates), max(y_coordinates)]
+
+    def _get_iou(self, ground_truth, pred):
+        # coordinates of the area of intersection.
+        ix1 = np.maximum(ground_truth[0], pred[0])
+        iy1 = np.maximum(ground_truth[1], pred[1])
+        ix2 = np.minimum(ground_truth[2], pred[2])
+        iy2 = np.minimum(ground_truth[3], pred[3])
+
+        # Intersection height and width.
+        i_height = np.maximum(iy2 - iy1 + 1, np.array(0.))
+        i_width = np.maximum(ix2 - ix1 + 1, np.array(0.))
+
+        area_of_intersection = i_height * i_width
+
+        # Ground Truth dimensions.
+        gt_height = ground_truth[3] - ground_truth[1] + 1
+        gt_width = ground_truth[2] - ground_truth[0] + 1
+
+        # Prediction dimensions.
+        pd_height = pred[3] - pred[1] + 1
+        pd_width = pred[2] - pred[0] + 1
+
+        area_of_union = gt_height * gt_width + pd_height * pd_width - area_of_intersection
+
+        iou = area_of_intersection / area_of_union
+
+        return iou
+
     def _draw_bounding_box(self, img, x, y, x_plus_w, y_plus_h, number_vehicles):
 
         point1, point2 = ((x + x_plus_w) // 2, ((y + y_plus_h) // 2))
 
         cv2.polylines(img, [self.pts], True, (255, 0, 0), 2)
 
-        cv2.putText(image, f"{str(number_vehicles)} veiculos estacionados ", (1287, 950), cv2.FONT_HERSHEY_SIMPLEX,
-                    1, (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(image, f"{str(number_vehicles)} veiculos estacionados ", self.text, cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(image, f"{str(num_max_cars - number_vehicles)} vagas disponiveis ", self.text_2,
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
         cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
 
     def inference(self, inputs: np.ndarray) -> np.array:
@@ -137,6 +176,12 @@ class Detector:
                     )
 
             for l in test:
+                # bbox = self._bounding_box(self.pts)
+                # print(bbox)
+                # pred = np.array([l["x"], l["y"], l["x_w"], l["y_h"]], dtype=np.float32)
+                # iou = self._get_iou(ground_truth=bbox, pred=pred)
+                # print(iou)
+                # if iou < 0.15:
                 self._draw_bounding_box(l["inputs"], l["x"], l["y"], l["x_w"], l["y_h"], total_carros)
 
         pprint(f"Há {total_carros} estacionados na área selecionada")
@@ -160,12 +205,6 @@ if __name__ == '__main__':
         output_cfg = "yolov4.cfg"
         gdown.download(url_cfg, output_cfg, quiet=False)
 
-    with open("geometry.json") as file:
-        region = json.load(file)
-
-    detector = Detector(polygon=region["region"])
-    image = cv2.imread("vant-externo.jpeg")
-
     font = cv2.FONT_HERSHEY_SIMPLEX
     org = (351, 761)
     fontScale = 1
@@ -173,8 +212,30 @@ if __name__ == '__main__':
     color = (255, 0, 0)
     thickness = 2
 
-    detector = Detector(polygon=region["region"])
     image = cv2.imread("vant-externo.jpeg")
+    # image = cv2.imread("photo_2022-09-21_12-12-28.jpg")
+    # image = cv2.imread("photo_2022-09-21_12-12-30.jpg")
+
+    height, width, channels = image.shape
+
+    if height == 960 and width == 1280:
+        with open("geometry_2.json") as file:
+            region = json.load(file)
+        text = (899, 822)
+        text_2 = (899, 862)
+        num_max_cars = 5
+
+    elif height == 1382 and width == 1836:
+        with open("geometry.json") as file:
+            region = json.load(file)
+        text = (1287, 950)
+        text_2 = (1287, 990)
+        num_max_cars = 5
+
+    else:
+        print("Tamanho não definido")
+
+    detector = Detector(polygon=region["region"], text=text, text_2=text_2, num_max_cars=num_max_cars)
 
     tes, num_cars = detector.inference(image)
 
