@@ -8,7 +8,7 @@ from typing import Tuple
 import cv2
 import gdown
 import numpy as np
-
+import math
 
 class Detector:
 
@@ -96,13 +96,23 @@ class Detector:
         # cv2.rectangle(img, (x, y), (x + x_plus_w, y + y_plus_h), color, 2)
         cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
 
-        x_2, y_2, w_2, h_2 = cv2.boundingRect(self.pts)
+        w = math.sqrt(math.pow(self.pts[0][0] - self.pts[1][0],2)+math.pow(self.pts[0][1] - self.pts[1][1],2))
+        h = math.sqrt(math.pow(self.pts[0][0] - self.pts[3][0],2)+math.pow(self.pts[0][1] - self.pts[3][1],2))
 
-        area = cv2.minAreaRect(self.pts)
+        ideal_polygon = [(0,0), (0,h),(w,h), (w,0), (0,0)]
 
-        bboxx = self.bounding_box(self.pts)
+        homography = cv2.findHomography(self.pts, ideal_polygon, cv2.RANSAC)
 
-        cv2.rectangle(img, (x_2, y_2), (x_2 + w_2, y_2 + h_2), (255, 0, 0), 3)
+        dst = img.copy()
+        cv2.warpAffine(img, homography, (w,h), dst)
+
+        # x_2, y_2, w_2, h_2 = cv2.boundingRect(self.pts)
+
+        # area = cv2.minAreaRect(self.pts)
+
+        # bboxx = self.bounding_box(self.pts)
+
+        # cv2.rectangle(img, (x_2, y_2), (x_2 + w_2, y_2 + h_2), (255, 0, 0), 3)
 
         # # Calculate Homography
         # h, status = cv2.findHomography(pts_src, pts_dst)
@@ -110,7 +120,7 @@ class Detector:
         # # Warp source image to destination based on homography
         # im_out = cv2.warpPerspective(img, h, (img.shape[1], img.shape[0]))
 
-        return img
+        return dst
 
     def inference(self, inputs: np.ndarray) -> np.array:
         if not isinstance(inputs, np.ndarray) and len(inputs) == 1:
