@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -76,18 +77,40 @@ class Detector:
 
         return iou
 
+    def bounding_box(self, points):
+        x_coordinates, y_coordinates = zip(*points)
+
+        return [min(x_coordinates), min(y_coordinates), max(x_coordinates), max(y_coordinates)]
+
     def _draw_bounding_box(self, img, x, y, x_plus_w, y_plus_h, number_vehicles):
 
         point1, point2 = ((x + x_plus_w) // 2, ((y + y_plus_h) // 2))
 
         cv2.polylines(img, [self.pts], True, (255, 0, 0), 2)
 
-        cv2.putText(image, f"{str(number_vehicles)} veiculos estacionados ", self.text, cv2.FONT_HERSHEY_SIMPLEX, 1,
+        cv2.putText(img, f"{str(number_vehicles)} veiculos estacionados ", self.text, cv2.FONT_HERSHEY_SIMPLEX, 1,
                     (255, 0, 0), 2, cv2.LINE_AA)
-        cv2.putText(image, f"{str(num_max_cars - number_vehicles)} vagas disponiveis ", self.text_2,
+        cv2.putText(img, f"{str(num_max_cars - number_vehicles)} vagas disponiveis ", self.text_2,
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
+        # cv2.rectangle(img, (x, y), (x + x_plus_w, y + y_plus_h), color, 2)
         cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
+
+        x_2, y_2, w_2, h_2 = cv2.boundingRect(self.pts)
+
+        area = cv2.minAreaRect(self.pts)
+
+        bboxx = self.bounding_box(self.pts)
+
+        cv2.rectangle(img, (x_2, y_2), (x_2 + w_2, y_2 + h_2), (255, 0, 0), 3)
+
+        # # Calculate Homography
+        # h, status = cv2.findHomography(pts_src, pts_dst)
+        #
+        # # Warp source image to destination based on homography
+        # im_out = cv2.warpPerspective(img, h, (img.shape[1], img.shape[0]))
+
+        return img
 
     def inference(self, inputs: np.ndarray) -> np.array:
         if not isinstance(inputs, np.ndarray) and len(inputs) == 1:
@@ -162,7 +185,7 @@ class Detector:
 
                 result = cv2.pointPolygonTest(self.pts, (point1, point2), measureDist=False)
 
-                if result == 1.0:
+                if result:
                     total_carros = total_carros + 1
                     test.append(
                         dict(
@@ -174,21 +197,29 @@ class Detector:
                             result=result
                         )
                     )
+            image_value = l["inputs"]
+            if test is not None:
+                for l in test:
+                    # bbox = self._bounding_box(self.pts)
+                    # print(bbox)
+                    # pred = np.array([l["x"], l["y"], l["x_w"], l["y_h"]], dtype=np.float32)
+                    # iou = self._get_iou(ground_truth=bbox, pred=pred)
+                    # print(iou)
+                    # if iou < 0.15:
 
-            for l in test:
-                # bbox = self._bounding_box(self.pts)
-                # print(bbox)
-                # pred = np.array([l["x"], l["y"], l["x_w"], l["y_h"]], dtype=np.float32)
-                # iou = self._get_iou(ground_truth=bbox, pred=pred)
-                # print(iou)
-                # if iou < 0.15:
-                self._draw_bounding_box(l["inputs"], l["x"], l["y"], l["x_w"], l["y_h"], total_carros)
+                    image_value = self._draw_bounding_box(l["inputs"], l["x"], l["y"], l["x_w"], l["y_h"], total_carros)
 
         pprint(f"Há {total_carros} estacionados na área selecionada")
-        return detections, total_carros
+        return detections, total_carros, image_value
 
 
 if __name__ == '__main__':
+    import base64
+    import logging
+    import os
+    import urllib
+    import urllib.request
+
     logger = logging.getLogger("Parking Detection")
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
@@ -212,11 +243,27 @@ if __name__ == '__main__':
     color = (255, 0, 0)
     thickness = 2
 
-    image = cv2.imread("vant-externo.jpeg")
+    # image = cv2.imread("vant-externo.jpeg")
     # image = cv2.imread("photo_2022-09-21_12-12-28.jpg")
     # image = cv2.imread("photo_2022-09-21_12-12-30.jpg")
 
-    height, width, channels = image.shape
+    import calendar
+    import datetime
+
+    date = datetime.datetime.utcnow()
+    utc_time = calendar.timegm(date.utctimetuple())
+    print(utc_time)
+    url = "http://187.37.89.204:88/jpg/image.jpg"
+    URL = f"{url}?{utc_time}"
+
+    plate_url: urllib.request.urlopen = urllib.request.urlopen(URL)
+    plate_cloudnary = np.asarray(bytearray(plate_url.read()), dtype=np.uint8)
+    plate_cloudnary = cv2.imdecode(plate_cloudnary, -1)
+
+    # image = cv2.imread(plate_cloudnary)
+
+    # height, width, channels = image.shape
+    height, width, channels = plate_cloudnary.shape
 
     if height == 960 and width == 1280:
         with open("geometry_2.json") as file:
@@ -235,11 +282,31 @@ if __name__ == '__main__':
     else:
         print("Tamanho não definido")
 
+        with open("geometry_3.json") as file:
+            region = json.load(file)
+        text = (1287, 950)
+        text_2 = (1287, 990)
+        num_max_cars = 5
+
     detector = Detector(polygon=region["region"], text=text, text_2=text_2, num_max_cars=num_max_cars)
 
-    tes, num_cars = detector.inference(image)
+    # tes, num_cars, image_r = detector.inference(image)
+    tes, num_cars, image_r = detector.inference(plate_cloudnary)
 
-    cv2.namedWindow("Street Parking", cv2.WINDOW_AUTOSIZE)
-    cv2.imshow("Street Parking", image)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
+    print(tes)
+    print(num_cars)
+    print(image_r)
+
+    # string = base64.b64encode(cv2.imencode('.jpg', image_r)[1]).decode()
+    # dict = {
+    #     'img': string
+    # }
+    #
+    # with open('imagem.json', 'w') as outfile:
+    #     json.dump(dict, outfile, ensure_ascii=False, indent=4)
+
+    if image_r is not None:
+        cv2.namedWindow("Street Parking", cv2.WINDOW_KEEPRATIO)
+        cv2.imshow("Street Parking", image_r)
+        cv2.waitKey()
+        cv2.destroyAllWindows()
