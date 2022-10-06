@@ -10,6 +10,7 @@ import gdown
 import numpy as np
 import math
 
+
 class Detector:
 
     def __init__(self, polygon: np.array, text: Tuple[int], text_2: Tuple[int], num_max_cars: int) -> None:
@@ -96,29 +97,14 @@ class Detector:
         # cv2.rectangle(img, (x, y), (x + x_plus_w, y + y_plus_h), color, 2)
         cv2.circle(img, (int(point1), int(point2)), radius=0, color=(0, 255, 0), thickness=50)
 
-        w = math.sqrt(math.pow(self.pts[0][0] - self.pts[1][0],2)+math.pow(self.pts[0][1] - self.pts[1][1],2))
-        h = math.sqrt(math.pow(self.pts[0][0] - self.pts[3][0],2)+math.pow(self.pts[0][1] - self.pts[3][1],2))
+        w = int(math.sqrt(math.pow(self.pts[0][0] - self.pts[1][0], 2) + math.pow(self.pts[0][1] - self.pts[1][1], 2)))
+        h = int(math.sqrt(math.pow(self.pts[0][0] - self.pts[3][0], 2) + math.pow(self.pts[0][1] - self.pts[3][1], 2)))
 
-        ideal_polygon = [(0,0), (0,h),(w,h), (w,0), (0,0)]
+        ideal_polygon = np.array([(0, 0), (0, h), (w, h), (w, 0), (0, 0)])
 
-        homography = cv2.findHomography(self.pts, ideal_polygon, cv2.RANSAC)
+        homography = cv2.findHomography(self.pts, ideal_polygon, cv2.RANSAC)[0].astype(np.float32)
 
-        dst = img.copy()
-        cv2.warpAffine(img, homography, (w,h), dst)
-
-        # x_2, y_2, w_2, h_2 = cv2.boundingRect(self.pts)
-
-        # area = cv2.minAreaRect(self.pts)
-
-        # bboxx = self.bounding_box(self.pts)
-
-        # cv2.rectangle(img, (x_2, y_2), (x_2 + w_2, y_2 + h_2), (255, 0, 0), 3)
-
-        # # Calculate Homography
-        # h, status = cv2.findHomography(pts_src, pts_dst)
-        #
-        # # Warp source image to destination based on homography
-        # im_out = cv2.warpPerspective(img, h, (img.shape[1], img.shape[0]))
+        dst = cv2.warpPerspective(img, homography, (w, h))
 
         return dst
 
@@ -253,7 +239,7 @@ if __name__ == '__main__':
     color = (255, 0, 0)
     thickness = 2
 
-    # image = cv2.imread("vant-externo.jpeg")
+    image = cv2.imread("vant-externo.jpeg")
     # image = cv2.imread("photo_2022-09-21_12-12-28.jpg")
     # image = cv2.imread("photo_2022-09-21_12-12-30.jpg")
 
@@ -266,14 +252,14 @@ if __name__ == '__main__':
     url = "http://187.37.89.204:88/jpg/image.jpg"
     URL = f"{url}?{utc_time}"
 
-    plate_url: urllib.request.urlopen = urllib.request.urlopen(URL)
-    plate_cloudnary = np.asarray(bytearray(plate_url.read()), dtype=np.uint8)
-    plate_cloudnary = cv2.imdecode(plate_cloudnary, -1)
+    # plate_url: urllib.request.urlopen = urllib.request.urlopen(URL)
+    # plate_cloudnary = np.asarray(bytearray(plate_url.read()), dtype=np.uint8)
+    # plate_cloudnary = cv2.imdecode(plate_cloudnary, -1)
 
     # image = cv2.imread(plate_cloudnary)
 
-    # height, width, channels = image.shape
-    height, width, channels = plate_cloudnary.shape
+    height, width, channels = image.shape
+    # height, width, channels = plate_cloudnary.shape
 
     if height == 960 and width == 1280:
         with open("geometry_2.json") as file:
@@ -300,8 +286,8 @@ if __name__ == '__main__':
 
     detector = Detector(polygon=region["region"], text=text, text_2=text_2, num_max_cars=num_max_cars)
 
-    # tes, num_cars, image_r = detector.inference(image)
-    tes, num_cars, image_r = detector.inference(plate_cloudnary)
+    tes, num_cars, image_r = detector.inference(image)
+    # tes, num_cars, image_r = detector.inference(plate_cloudnary)
 
     print(tes)
     print(num_cars)
